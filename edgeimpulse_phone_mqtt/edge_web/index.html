@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vietnamese KWS Edge Impulse WebAssembly</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Edge Impulse WebAssembly files -->
+  <script src="edge-impulse-standalone.js"></script>
+  <script src="run-impulse.js"></script>
+
+  <!-- MQTT browser library -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #111;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: auto;
+    }
+
+    .card {
+      background: white;
+      padding: 18px;
+      margin-bottom: 16px;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 6px;
+    }
+
+    button {
+      padding: 13px 18px;
+      border: none;
+      border-radius: 12px;
+      font-weight: bold;
+      margin: 5px 4px 5px 0;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    .start { background: #16a34a; color: white; }
+    .stop { background: #dc2626; color: white; }
+    .blue { background: #2563eb; color: white; }
+    .orange { background: #f97316; color: white; }
+    .dark { background: #111827; color: white; }
+
+    .metric {
+      background: #f8fafc;
+      padding: 14px;
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    .label {
+      color: #666;
+      font-size: 13px;
+    }
+
+    .value {
+      font-size: 24px;
+      font-weight: bold;
+      margin-top: 4px;
+      word-break: break-word;
+    }
+
+    .scores div {
+      margin: 6px 0;
+    }
+
+    .ok { color: #16a34a; font-weight: bold; }
+    .bad { color: #dc2626; font-weight: bold; }
+    .warn { color: #d97706; font-weight: bold; }
+
+    code {
+      background: #f1f5f9;
+      padding: 2px 5px;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="container">
+  <h1>Vietnamese KWS Edge Impulse WebAssembly</h1>
+  <p>
+    Điện thoại dùng microphone để nhận dạng lệnh tiếng Việt, sau đó gửi kết quả qua MQTT sang ESP32.
+  </p>
+
+  <div class="card">
+    <h2>System Status</h2>
+    <p>Edge Impulse: <span id="eiStatus">Not loaded</span></p>
+    <p>Microphone: <span id="micStatus">Not started</span></p>
+    <p>MQTT: <span id="mqttStatus">Connecting...</span></p>
+    <p>Topic: <code id="topicText"></code></p>
+
+    <button class="start" onclick="startSystem()">Start Voice Recognition</button>
+    <button class="stop" onclick="stopSystem()">Stop</button>
+  </div>
+
+  <div class="card">
+    <h2>Manual Control</h2>
+    <p>Dùng các nút này để điều khiển ESP32 trực tiếp nếu model giọng nói chưa nhận ổn định.</p>
+
+    <button class="start" onclick="manualSend('bat_den')">Bật đèn</button>
+    <button class="stop" onclick="manualSend('tat_den')">Tắt đèn</button>
+    <button class="blue" onclick="manualSend('bat_quat')">Bật quạt</button>
+    <button class="orange" onclick="manualSend('tat_quat')">Tắt quạt</button>
+  </div>
+
+  <div class="card">
+    <h2>Prediction Result</h2>
+
+    <div class="metric">
+      <div class="label">Best Label</div>
+      <div id="bestLabel" class="value">none</div>
+    </div>
+
+    <div class="metric">
+      <div class="label">Confidence</div>
+      <div id="confidence" class="value">0.00</div>
+    </div>
+
+    <div class="metric">
+      <div class="label">Audio RMS</div>
+      <div id="rmsValue" class="value">0.000</div>
+    </div>
+
+    <div class="metric">
+      <div class="label">Stable Filter</div>
+      <div id="stableStatus" class="value">none</div>
+    </div>
+
+    <div class="metric">
+      <div class="label">MQTT Sent</div>
+      <div id="mqttSent" class="value">none</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Class Scores</h2>
+    <div id="scores" class="scores">No result yet</div>
+  </div>
+
+  <div class="card">
+    <h2>Command Mapping</h2>
+    <p><b>bat_den</b> → bật đèn LED trên ESP32</p>
+    <p><b>tat_den</b> → tắt đèn LED trên ESP32</p>
+    <p><b>bat_quat</b> → demo bật quạt</p>
+    <p><b>tat_quat</b> → demo tắt quạt</p>
+    <p><b>unknown/noise</b> → bỏ qua, không gửi MQTT</p>
+  </div>
+</div>
+
+<script>
+/* ================== CONFIG ================== */
+
+const MQTT_HOST = "wss://broker.emqx.io:8084/mqtt";
+const MQTT_TOPIC = "khoi55/aimangcambien/N22DCDT031/command";
+
+/*
+  Để dễ nhận hơn, tạm giảm threshold xuống 0.75.
+  Nếu LED nhảy lung tung thì tăng lại 0.85 hoặc 0.90.
+*/
+const CONFIDENCE_THRESHOLD = 0.75;
+const COOLDOWN_MS = 2500;
+const REQUIRED_CONSECUTIVE = 1;
+
+const VALID_COMMANDS = [
+  "bat_den",
+  "tat_den",
+  "bat_quat",
+  "tat_quat"
+];
+
+const TARGET_SAMPLE_RATE = 16000;
+const WINDOW_SAMPLES = 16000;
+
+/*
+  Nếu model toàn ra noise dù bạn nói rõ, thử đổi true thành false.
+  Nhưng trước mắt giữ true.
+*/
+const USE_INT16_AUDIO = true;
+
+/* ================== GLOBAL STATE ================== */
+
+let classifier = null;
+let audioContext = null;
+let mediaStream = null;
+let processor = null;
+let audioBuffer = [];
+let running = false;
+let isClassifying = false;
+
+let lastSentTime = 0;
+let lastCandidateLabel = "none";
+let candidateCount = 0;
+
+document.getElementById("topicText").innerText = MQTT_TOPIC;
+
+/* ================== MQTT ================== */
+
+const mqttClient = mqtt.connect(MQTT_HOST, {
+  clientId: "phone_kws_" + Math.random().toString(16).substring(2, 10),
+  clean: true,
+  connectTimeout: 5000,
+  reconnectPeriod: 2000
+});
+
+mqttClient.on("connect", function () {
+  document.getElementById("mqttStatus").innerHTML =
+    "<span class='ok'>Connected</span>";
+  console.log("[MQTT] connected");
+});
+
+mqttClient.on("reconnect", function () {
+  document.getElementById("mqttStatus").innerHTML =
+    "<span class='warn'>Reconnecting...</span>";
+});
+
+mqttClient.on("error", function (err) {
+  document.getElementById("mqttStatus").innerHTML =
+    "<span class='bad'>Error</span>";
+  console.error("[MQTT] error", err);
+});
+
+function publishToESP32(label, confidence, forceSend = false) {
+  const now = Date.now();
+
+  if (!forceSend && now - lastSentTime < COOLDOWN_MS) {
+    document.getElementById("mqttSent").innerText = "cooldown ignored";
+    return;
+  }
+
+  const payload = {
+    label: label,
+    confidence: confidence,
+    source: "phone_edge_impulse_wasm",
+    time: now
+  };
+
+  mqttClient.publish(MQTT_TOPIC, JSON.stringify(payload));
+  lastSentTime = now;
+
+  document.getElementById("mqttSent").innerText =
+    label + " / " + confidence.toFixed(2);
+
+  console.log("[MQTT] sent:", payload);
+}
+
+function manualSend(label) {
+  publishToESP32(label, 0.99, true);
+
+  document.getElementById("bestLabel").innerText = label;
+  document.getElementById("confidence").innerText = "0.990";
+  document.getElementById("stableStatus").innerText = "manual command";
+}
+
+/* ================== EDGE IMPULSE ================== */
+
+async function waitForEdgeImpulseClassifier() {
+  return new Promise((resolve, reject) => {
+    let elapsed = 0;
+
+    const timer = setInterval(() => {
+      if (typeof EdgeImpulseClassifier !== "undefined") {
+        clearInterval(timer);
+        resolve();
+        return;
+      }
+
+      elapsed += 100;
+
+      if (elapsed >= 10000) {
+        clearInterval(timer);
+        reject("EdgeImpulseClassifier not found after 10 seconds");
+      }
+    }, 100);
+  });
+}
+
+async function initClassifier() {
+  if (classifier) return;
+
+  try {
+    document.getElementById("eiStatus").innerHTML =
+      "<span class='warn'>Loading...</span>";
+
+    await waitForEdgeImpulseClassifier();
+
+    classifier = new EdgeImpulseClassifier();
+    await classifier.init();
+
+    document.getElementById("eiStatus").innerHTML =
+      "<span class='ok'>Loaded</span>";
+
+    console.log("[EI] classifier loaded");
+
+    if (classifier.getProperties) {
+      console.log("[EI] properties:", classifier.getProperties());
+    }
+  }
+  catch (err) {
+    console.error("[EI] load failed:", err);
+
+    document.getElementById("eiStatus").innerHTML =
+      "<span class='bad'>Load failed</span>";
+
+    alert(
+      "Không load được Edge Impulse WebAssembly.\n\n" +
+      "Kiểm tra các file này phải nằm cùng thư mục:\n" +
+      "1. index.html\n" +
+      "2. edge-impulse-standalone.js\n" +
+      "3. edge-impulse-standalone.wasm\n" +
+      "4. run-impulse.js\n\n" +
+      "Lỗi chi tiết: " + err
+    );
+  }
+}
+
+/* ================== AUDIO ================== */
+
+function calculateRMS(samples) {
+  let sum = 0;
+
+  for (let i = 0; i < samples.length; i++) {
+    sum += samples[i] * samples[i];
+  }
+
+  return Math.sqrt(sum / samples.length);
+}
+
+function resampleLinear(input, inputSampleRate, outputSampleRate) {
+  if (inputSampleRate === outputSampleRate) {
+    return input;
+  }
+
+  const ratio = inputSampleRate / outputSampleRate;
+  const newLength = Math.round(input.length / ratio);
+  const result = new Float32Array(newLength);
+
+  for (let i = 0; i < newLength; i++) {
+    const index = i * ratio;
+    const index0 = Math.floor(index);
+    const index1 = Math.min(index0 + 1, input.length - 1);
+    const frac = index - index0;
+
+    result[i] = input[index0] * (1 - frac) + input[index1] * frac;
+  }
+
+  return result;
+}
+
+function prepareAudioForClassifier(floatSamples) {
+  const out = [];
+
+  for (let i = 0; i < floatSamples.length; i++) {
+    let s = floatSamples[i];
+
+    if (s > 1) s = 1;
+    if (s < -1) s = -1;
+
+    if (USE_INT16_AUDIO) {
+      out.push(Math.round(s * 32767));
+    } else {
+      out.push(s);
+    }
+  }
+
+  return out;
+}
+
+/* ================== RESULT HANDLING ================== */
+
+function normalizeResult(result) {
+  if (!result) return [];
+
+  if (Array.isArray(result.results)) {
+    return result.results;
+  }
+
+  if (Array.isArray(result.classification)) {
+    return result.classification;
+  }
+
+  if (result.result && Array.isArray(result.result.results)) {
+    return result.result.results;
+  }
+
+  if (result.result && Array.isArray(result.result.classification)) {
+    return result.result.classification;
+  }
+
+  if (result.classification && typeof result.classification === "object") {
+    return Object.keys(result.classification).map(k => ({
+      label: k,
+      value: result.classification[k]
+    }));
+  }
+
+  return [];
+}
+
+function handleStablePrediction(label, confidence) {
+  if (!VALID_COMMANDS.includes(label)) {
+    document.getElementById("stableStatus").innerText = "ignored: " + label;
+    document.getElementById("mqttSent").innerText = "no send";
+    candidateCount = 0;
+    lastCandidateLabel = "none";
+    return;
+  }
+
+  if (confidence < CONFIDENCE_THRESHOLD) {
+    document.getElementById("stableStatus").innerText =
+      "low confidence: " + confidence.toFixed(2);
+    document.getElementById("mqttSent").innerText = "no send";
+    candidateCount = 0;
+    lastCandidateLabel = "none";
+    return;
+  }
+
+  if (label === lastCandidateLabel) {
+    candidateCount++;
+  } else {
+    lastCandidateLabel = label;
+    candidateCount = 1;
+  }
+
+  document.getElementById("stableStatus").innerText =
+    "candidate: " + label + " (" + candidateCount + "/" + REQUIRED_CONSECUTIVE + ")";
+
+  if (candidateCount >= REQUIRED_CONSECUTIVE) {
+    publishToESP32(label, confidence, false);
+
+    candidateCount = 0;
+    lastCandidateLabel = "none";
+  }
+}
+
+async function classifyOneWindow(samples) {
+  if (!classifier || isClassifying) return;
+
+  isClassifying = true;
+
+  try {
+    const result = classifier.classify(samples, false);
+    const items = normalizeResult(result);
+
+    if (!items || items.length === 0) {
+      console.log("[EI] unknown result format:", result);
+      document.getElementById("scores").innerText =
+        "Unknown result format. Open browser console to inspect.";
+      return;
+    }
+
+    let bestLabel = "none";
+    let bestConfidence = 0;
+    let scoreHtml = "";
+
+    for (const item of items) {
+      const label = item.label;
+      const value = Number(item.value);
+
+      scoreHtml += "<div><b>" + label + "</b>: " + value.toFixed(3) + "</div>";
+
+      if (value > bestConfidence) {
+        bestConfidence = value;
+        bestLabel = label;
+      }
+    }
+
+    document.getElementById("bestLabel").innerText = bestLabel;
+    document.getElementById("confidence").innerText = bestConfidence.toFixed(3);
+    document.getElementById("scores").innerHTML = scoreHtml;
+
+    console.log("[EI] best:", bestLabel, bestConfidence);
+
+    handleStablePrediction(bestLabel, bestConfidence);
+  }
+  catch (err) {
+    console.error("[EI] classify error:", err);
+    document.getElementById("eiStatus").innerHTML =
+      "<span class='bad'>Classify error</span>";
+  }
+  finally {
+    isClassifying = false;
+  }
+}
+
+/* ================== START / STOP ================== */
+
+async function startSystem() {
+  try {
+    running = true;
+
+    await initClassifier();
+
+    if (!classifier) {
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Trình duyệt không hỗ trợ microphone API. Hãy dùng Safari/Chrome mới và mở bằng HTTPS.");
+      return;
+    }
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      },
+      video: false
+    });
+
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    const source = audioContext.createMediaStreamSource(mediaStream);
+
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+    audioBuffer = [];
+
+    processor.onaudioprocess = async function (event) {
+      if (!running) return;
+
+      const input = event.inputBuffer.getChannelData(0);
+
+      for (let i = 0; i < input.length; i++) {
+        audioBuffer.push(input[i]);
+      }
+
+      const neededInputSamples = Math.ceil(
+        WINDOW_SAMPLES * audioContext.sampleRate / TARGET_SAMPLE_RATE
+      );
+
+      if (audioBuffer.length >= neededInputSamples) {
+        const raw = audioBuffer.slice(0, neededInputSamples);
+
+        /*
+          Dùng overlap 50% để tăng khả năng bắt trúng lúc bạn nói.
+          Nếu không overlap, model dễ bị lệch cửa sổ 1 giây.
+        */
+        const step = Math.floor(neededInputSamples / 2);
+        audioBuffer = audioBuffer.slice(step);
+
+        const floatArray = new Float32Array(raw);
+
+        const rms = calculateRMS(floatArray);
+        document.getElementById("rmsValue").innerText = rms.toFixed(4);
+
+        const resampled = resampleLinear(
+          floatArray,
+          audioContext.sampleRate,
+          TARGET_SAMPLE_RATE
+        );
+
+        const modelInput = prepareAudioForClassifier(resampled).slice(0, WINDOW_SAMPLES);
+
+        if (modelInput.length === WINDOW_SAMPLES) {
+          await classifyOneWindow(modelInput);
+        }
+      }
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+
+    document.getElementById("micStatus").innerHTML =
+      "<span class='ok'>Running</span>";
+
+    console.log("[MIC] started. Browser sample rate:", audioContext.sampleRate);
+  }
+  catch (err) {
+    console.error("[MIC] start error:", err);
+
+    document.getElementById("micStatus").innerHTML =
+      "<span class='bad'>Error</span>";
+
+    alert(
+      "Không bật được microphone.\n\n" +
+      "Hãy kiểm tra:\n" +
+      "1. Link phải là HTTPS.\n" +
+      "2. Trình duyệt đã cho phép Microphone.\n" +
+      "3. Không mở bằng file local.\n" +
+      "4. Thử mở bằng Safari/Chrome, không mở trong Zalo/Facebook."
+    );
+  }
+}
+
+function stopSystem() {
+  running = false;
+
+  if (processor) {
+    processor.disconnect();
+    processor = null;
+  }
+
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+
+  audioBuffer = [];
+
+  candidateCount = 0;
+  lastCandidateLabel = "none";
+
+  document.getElementById("micStatus").innerHTML =
+    "<span class='bad'>Stopped</span>";
+
+  document.getElementById("stableStatus").innerText = "stopped";
+
+  console.log("[MIC] stopped");
+}
+</script>
+</body>
+</html>
