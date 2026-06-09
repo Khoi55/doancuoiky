@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <title>Vietnamese KWS Edge Impulse WebAssembly</title>
+  <title>Vietnamese KWS – Edge Impulse Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Edge Impulse WebAssembly files -->
@@ -12,154 +12,599 @@
   <!-- MQTT browser library -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
+  <!-- Google Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-card: rgba(15, 23, 42, 0.65);
+      --bg-metric: rgba(10, 14, 26, 0.5);
+      --border: rgba(99, 102, 241, 0.12);
+      --border-hover: rgba(99, 102, 241, 0.35);
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #6366f1;
+      --accent-cyan: #22d3ee;
+      --accent-green: #4ade80;
+      --accent-red: #f87171;
+      --accent-amber: #fbbf24;
+      --accent-purple: #a78bfa;
+      --glow-blue: rgba(99, 102, 241, 0.4);
+      --glow-green: rgba(74, 222, 128, 0.4);
+      --glow-red: rgba(248, 113, 113, 0.4);
+    }
+
     body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      margin: 0;
-      padding: 20px;
-      color: #111;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 100%, rgba(34, 211, 238, 0.06) 0%, transparent 60%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 16px;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .container {
-      max-width: 820px;
-      margin: auto;
-    }
+    .container { max-width: 860px; margin: 0 auto; }
 
-    .card {
-      background: white;
-      padding: 18px;
-      margin-bottom: 16px;
-      border-radius: 16px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    /* ===== HEADER ===== */
+    .header {
+      text-align: center;
+      padding: 32px 0 24px;
     }
-
-    h1 {
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-blue);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .header h1 {
       font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #e2e8f0 0%, #6366f1 50%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    .header p {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 8px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.5;
+    }
+
+    /* ===== CARDS ===== */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 22px;
+      margin-bottom: 16px;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: var(--border-hover); }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon { font-size: 16px; }
+
+    /* ===== STATUS ROW ===== */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .status-item {
+      background: var(--bg-metric);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .status-item:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+    .status-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
       margin-bottom: 6px;
     }
-
-    button {
-      padding: 13px 18px;
-      border: none;
-      border-radius: 12px;
-      font-weight: bold;
-      margin: 5px 4px 5px 0;
-      cursor: pointer;
-      font-size: 15px;
-    }
-
-    .start { background: #16a34a; color: white; }
-    .stop { background: #dc2626; color: white; }
-    .blue { background: #2563eb; color: white; }
-    .orange { background: #f97316; color: white; }
-    .dark { background: #111827; color: white; }
-
-    .metric {
-      background: #f8fafc;
-      padding: 14px;
-      border-radius: 12px;
-      margin-top: 10px;
-    }
-
-    .label {
-      color: #666;
+    .status-value {
       font-size: 13px;
+      font-weight: 600;
     }
 
-    .value {
-      font-size: 24px;
-      font-weight: bold;
+    /* Status dot animation */
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .dot-ok {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--glow-green);
+      animation: dotPulse 2s infinite;
+    }
+    .dot-err {
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--glow-red);
+    }
+    .dot-warn {
+      background: var(--accent-amber);
+      animation: dotPulse 1.5s infinite;
+    }
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    .topic-tag {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 8px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      color: var(--accent-purple);
+      word-break: break-all;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      flex: 1;
+      min-width: 120px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s;
+      position: relative;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+      pointer-events: none;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-start {
+      background: linear-gradient(135deg, #059669, #10b981);
+      color: white;
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+    }
+    .btn-start:hover { box-shadow: 0 6px 28px rgba(16, 185, 129, 0.45); transform: translateY(-1px); }
+
+    .btn-stop {
+      background: linear-gradient(135deg, #dc2626, #ef4444);
+      color: white;
+      box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+    }
+    .btn-stop:hover { box-shadow: 0 6px 28px rgba(239, 68, 68, 0.45); transform: translateY(-1px); }
+
+    /* Manual control buttons */
+    .ctrl-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .btn-ctrl {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg-metric);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-ctrl:hover { transform: translateY(-2px); }
+    .btn-ctrl:active { transform: scale(0.97); }
+    .btn-ctrl .emoji { font-size: 22px; }
+
+    .btn-on-light {
+      border-color: rgba(74, 222, 128, 0.3);
+      background: rgba(74, 222, 128, 0.08);
+    }
+    .btn-on-light:hover { border-color: var(--accent-green); box-shadow: 0 0 20px rgba(74, 222, 128, 0.15); }
+
+    .btn-off-light {
+      border-color: rgba(248, 113, 113, 0.3);
+      background: rgba(248, 113, 113, 0.08);
+    }
+    .btn-off-light:hover { border-color: var(--accent-red); box-shadow: 0 0 20px rgba(248, 113, 113, 0.15); }
+
+    .btn-on-fan {
+      border-color: rgba(34, 211, 238, 0.3);
+      background: rgba(34, 211, 238, 0.08);
+    }
+    .btn-on-fan:hover { border-color: var(--accent-cyan); box-shadow: 0 0 20px rgba(34, 211, 238, 0.15); }
+
+    .btn-off-fan {
+      border-color: rgba(167, 139, 250, 0.3);
+      background: rgba(167, 139, 250, 0.08);
+    }
+    .btn-off-fan:hover { border-color: var(--accent-purple); box-shadow: 0 0 20px rgba(167, 139, 250, 0.15); }
+
+    /* ===== PREDICTION DISPLAY ===== */
+    .prediction-hero {
+      text-align: center;
+      padding: 28px 0 20px;
+    }
+    .prediction-label {
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      transition: all 0.3s;
+    }
+    .prediction-conf {
+      font-size: 18px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+      font-weight: 500;
+    }
+
+    /* Confidence bar */
+    .conf-bar-outer {
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 100px;
+      margin-top: 16px;
+      overflow: hidden;
+    }
+    .conf-bar-inner {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* Metric grid below prediction */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .metric-box {
+      background: var(--bg-metric);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .metric-box:hover { border-color: var(--border-hover); }
+    .metric-box .m-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+    }
+    .metric-box .m-value {
+      font-size: 16px;
+      font-weight: 700;
       margin-top: 4px;
+      color: var(--text-primary);
       word-break: break-word;
     }
 
-    .scores div {
-      margin: 6px 0;
+    /* ===== AUDIO VISUALIZER ===== */
+    .visualizer-wrap {
+      height: 56px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 3px;
+      margin-bottom: 18px;
+    }
+    .viz-bar {
+      width: 4px;
+      min-height: 4px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, var(--accent-cyan), var(--accent-blue));
+      transition: height 0.1s ease;
+      opacity: 0.7;
     }
 
-    .ok { color: #16a34a; font-weight: bold; }
-    .bad { color: #dc2626; font-weight: bold; }
-    .warn { color: #d97706; font-weight: bold; }
-
-    code {
-      background: #f1f5f9;
-      padding: 2px 5px;
-      border-radius: 5px;
+    /* ===== CLASS SCORES ===== */
+    .score-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .score-label-text {
+      font-size: 13px;
+      font-weight: 600;
+      width: 90px;
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+    .score-bar-bg {
+      flex: 1;
+      height: 8px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .score-bar-fill.best {
+      background: linear-gradient(90deg, var(--accent-green), #22d3ee);
+    }
+    .score-value {
       font-size: 12px;
+      font-weight: 700;
+      width: 50px;
+      text-align: right;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    /* ===== COMMAND MAP ===== */
+    .cmd-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .cmd-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-metric);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      transition: border-color 0.3s;
+    }
+    .cmd-item:hover { border-color: var(--border-hover); }
+    .cmd-icon { font-size: 20px; }
+    .cmd-text {
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .cmd-key {
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
+      color: var(--accent-cyan);
+      font-size: 12px;
+    }
+    .cmd-desc {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      text-align: center;
+      padding: 24px 0;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .footer a { color: var(--accent-blue); text-decoration: none; }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 600px) {
+      .status-grid { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+      .ctrl-grid { grid-template-columns: 1fr 1fr; }
+      .cmd-grid { grid-template-columns: 1fr; }
+      .header h1 { font-size: 22px; }
+      .prediction-label { font-size: 32px; }
     }
   </style>
 </head>
 
 <body>
 <div class="container">
-  <h1>Vietnamese KWS Edge Impulse WebAssembly</h1>
-  <p>
-    Điện thoại dùng microphone để nhận dạng lệnh tiếng Việt, sau đó gửi kết quả qua MQTT sang ESP32.
-  </p>
 
-  <div class="card">
-    <h2>System Status</h2>
-    <p>Edge Impulse: <span id="eiStatus">Not loaded</span></p>
-    <p>Microphone: <span id="micStatus">Not started</span></p>
-    <p>MQTT: <span id="mqttStatus">Connecting...</span></p>
-    <p>Topic: <code id="topicText"></code></p>
-
-    <button class="start" onclick="startSystem()">Start Voice Recognition</button>
-    <button class="stop" onclick="stopSystem()">Stop</button>
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-badge">⚡ Edge Impulse WebAssembly</div>
+    <h1>Vietnamese Keyword Spotting</h1>
+    <p>Nhận dạng giọng nói tiếng Việt trên điện thoại, gửi lệnh qua MQTT để điều khiển ESP32 trong thời gian thực.</p>
   </div>
 
+  <!-- STATUS -->
   <div class="card">
-    <h2>Manual Control</h2>
-    <p>Dùng các nút này để điều khiển ESP32 trực tiếp nếu model giọng nói chưa nhận ổn định.</p>
-
-    <button class="start" onclick="manualSend('bat_den')">Bật đèn</button>
-    <button class="stop" onclick="manualSend('tat_den')">Tắt đèn</button>
-    <button class="blue" onclick="manualSend('bat_quat')">Bật quạt</button>
-    <button class="orange" onclick="manualSend('tat_quat')">Tắt quạt</button>
-  </div>
-
-  <div class="card">
-    <h2>Prediction Result</h2>
-
-    <div class="metric">
-      <div class="label">Best Label</div>
-      <div id="bestLabel" class="value">none</div>
+    <div class="card-title"><span class="icon">📡</span> System Status</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-label">Edge Impulse</div>
+        <div class="status-value" id="eiStatus"><span class="dot dot-err"></span>Not loaded</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Microphone</div>
+        <div class="status-value" id="micStatus"><span class="dot dot-err"></span>Stopped</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">MQTT Broker</div>
+        <div class="status-value" id="mqttStatus"><span class="dot dot-warn"></span>Connecting</div>
+      </div>
     </div>
+    <div class="topic-tag" id="topicText"></div>
 
-    <div class="metric">
-      <div class="label">Confidence</div>
-      <div id="confidence" class="value">0.00</div>
-    </div>
-
-    <div class="metric">
-      <div class="label">Audio RMS</div>
-      <div id="rmsValue" class="value">0.000</div>
-    </div>
-
-    <div class="metric">
-      <div class="label">Stable Filter</div>
-      <div id="stableStatus" class="value">none</div>
-    </div>
-
-    <div class="metric">
-      <div class="label">MQTT Sent</div>
-      <div id="mqttSent" class="value">none</div>
+    <div class="btn-row" style="margin-top: 16px;">
+      <button class="btn btn-start" onclick="startSystem()">▶ Start Recognition</button>
+      <button class="btn btn-stop" onclick="stopSystem()">■ Stop</button>
     </div>
   </div>
 
+  <!-- MANUAL CONTROL -->
   <div class="card">
-    <h2>Class Scores</h2>
-    <div id="scores" class="scores">No result yet</div>
+    <div class="card-title"><span class="icon">🎮</span> Manual Control</div>
+    <div class="ctrl-grid">
+      <button class="btn-ctrl btn-on-light" onclick="manualSend('bat_den')">
+        <span class="emoji">💡</span> Bật đèn
+      </button>
+      <button class="btn-ctrl btn-off-light" onclick="manualSend('tat_den')">
+        <span class="emoji">🔴</span> Tắt đèn
+      </button>
+      <button class="btn-ctrl btn-on-fan" onclick="manualSend('bat_quat')">
+        <span class="emoji">🌀</span> Bật quạt
+      </button>
+      <button class="btn-ctrl btn-off-fan" onclick="manualSend('tat_quat')">
+        <span class="emoji">💤</span> Tắt quạt
+      </button>
+    </div>
   </div>
 
+  <!-- PREDICTION -->
   <div class="card">
-    <h2>Command Mapping</h2>
-    <p><b>bat_den</b> → bật đèn LED trên ESP32</p>
-    <p><b>tat_den</b> → tắt đèn LED trên ESP32</p>
-    <p><b>bat_quat</b> → demo bật quạt</p>
-    <p><b>tat_quat</b> → demo tắt quạt</p>
-    <p><b>unknown/noise</b> → bỏ qua, không gửi MQTT</p>
+    <div class="card-title"><span class="icon">🧠</span> Prediction Result</div>
+
+    <!-- Audio Visualizer -->
+    <div class="visualizer-wrap" id="visualizer"></div>
+
+    <div class="prediction-hero">
+      <div class="prediction-label" id="bestLabel">none</div>
+      <div class="prediction-conf">Confidence: <span id="confidence">0.000</span></div>
+      <div class="conf-bar-outer">
+        <div class="conf-bar-inner" id="confBar"></div>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric-box">
+        <div class="m-label">Audio RMS</div>
+        <div class="m-value" id="rmsValue">0.000</div>
+      </div>
+      <div class="metric-box">
+        <div class="m-label">Stable Filter</div>
+        <div class="m-value" id="stableStatus">none</div>
+      </div>
+      <div class="metric-box">
+        <div class="m-label">MQTT Sent</div>
+        <div class="m-value" id="mqttSent">none</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLASS SCORES -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📊</span> Class Scores</div>
+    <div id="scores" style="color: var(--text-muted); font-size: 13px;">Waiting for first prediction...</div>
+  </div>
+
+  <!-- COMMAND MAP -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📋</span> Command Mapping</div>
+    <div class="cmd-grid">
+      <div class="cmd-item">
+        <div class="cmd-icon">💡</div>
+        <div class="cmd-text">
+          <div class="cmd-key">bat_den</div>
+          <div class="cmd-desc">Bật đèn LED trên ESP32</div>
+        </div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-icon">🔴</div>
+        <div class="cmd-text">
+          <div class="cmd-key">tat_den</div>
+          <div class="cmd-desc">Tắt đèn LED trên ESP32</div>
+        </div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-icon">🌀</div>
+        <div class="cmd-text">
+          <div class="cmd-key">bat_quat</div>
+          <div class="cmd-desc">Bật quạt qua MOSFET</div>
+        </div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-icon">💤</div>
+        <div class="cmd-text">
+          <div class="cmd-key">tat_quat</div>
+          <div class="cmd-desc">Tắt quạt qua MOSFET</div>
+        </div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-icon">🔇</div>
+        <div class="cmd-text">
+          <div class="cmd-key">unknown</div>
+          <div class="cmd-desc">Bỏ qua, không gửi MQTT</div>
+        </div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-icon">🔕</div>
+        <div class="cmd-text">
+          <div class="cmd-key">noise</div>
+          <div class="cmd-desc">Bỏ qua, không gửi MQTT</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Nguyễn Xuân Khôi – N22DCDT031 · ELE14102 Sensor Network · PTIT HCM<br>
+    Vietnamese KWS · Edge Impulse · ESP32 · MQTT
   </div>
 </div>
 
@@ -169,28 +614,14 @@
 const MQTT_HOST = "wss://broker.emqx.io:8084/mqtt";
 const MQTT_TOPIC = "khoi55/aimangcambien/N22DCDT031/command";
 
-/*
-  Để dễ nhận hơn, tạm giảm threshold xuống 0.75.
-  Nếu LED nhảy lung tung thì tăng lại 0.85 hoặc 0.90.
-*/
 const CONFIDENCE_THRESHOLD = 0.75;
 const COOLDOWN_MS = 2500;
 const REQUIRED_CONSECUTIVE = 1;
 
-const VALID_COMMANDS = [
-  "bat_den",
-  "tat_den",
-  "bat_quat",
-  "tat_quat"
-];
+const VALID_COMMANDS = ["bat_den", "tat_den", "bat_quat", "tat_quat"];
 
 const TARGET_SAMPLE_RATE = 16000;
 const WINDOW_SAMPLES = 16000;
-
-/*
-  Nếu model toàn ra noise dù bạn nói rõ, thử đổi true thành false.
-  Nhưng trước mắt giữ true.
-*/
 const USE_INT16_AUDIO = true;
 
 /* ================== GLOBAL STATE ================== */
@@ -209,6 +640,44 @@ let candidateCount = 0;
 
 document.getElementById("topicText").innerText = MQTT_TOPIC;
 
+// Create visualizer bars
+const vizContainer = document.getElementById("visualizer");
+const NUM_BARS = 40;
+const vizBars = [];
+for (let i = 0; i < NUM_BARS; i++) {
+  const bar = document.createElement("div");
+  bar.className = "viz-bar";
+  bar.style.height = "4px";
+  vizContainer.appendChild(bar);
+  vizBars.push(bar);
+}
+
+function updateVisualizer(rms) {
+  const intensity = Math.min(rms * 8, 1);
+  for (let i = 0; i < NUM_BARS; i++) {
+    const dist = Math.abs(i - NUM_BARS / 2) / (NUM_BARS / 2);
+    const base = (1 - dist) * intensity;
+    const rand = Math.random() * 0.3;
+    const h = Math.max(4, (base + rand * intensity) * 52);
+    vizBars[i].style.height = h + "px";
+    vizBars[i].style.opacity = 0.3 + intensity * 0.7;
+  }
+}
+
+// Color map for prediction labels
+function getLabelColor(label) {
+  const colors = {
+    bat_den: "var(--accent-green)",
+    tat_den: "var(--accent-red)",
+    bat_quat: "var(--accent-cyan)",
+    tat_quat: "var(--accent-purple)",
+    dung: "var(--accent-amber)",
+    unknown: "var(--text-muted)",
+    noise: "var(--text-muted)"
+  };
+  return colors[label] || "var(--text-primary)";
+}
+
 /* ================== MQTT ================== */
 
 const mqttClient = mqtt.connect(MQTT_HOST, {
@@ -220,18 +689,18 @@ const mqttClient = mqtt.connect(MQTT_HOST, {
 
 mqttClient.on("connect", function () {
   document.getElementById("mqttStatus").innerHTML =
-    "<span class='ok'>Connected</span>";
+    '<span class="dot dot-ok"></span>Connected';
   console.log("[MQTT] connected");
 });
 
 mqttClient.on("reconnect", function () {
   document.getElementById("mqttStatus").innerHTML =
-    "<span class='warn'>Reconnecting...</span>";
+    '<span class="dot dot-warn"></span>Reconnecting';
 });
 
 mqttClient.on("error", function (err) {
   document.getElementById("mqttStatus").innerHTML =
-    "<span class='bad'>Error</span>";
+    '<span class="dot dot-err"></span>Error';
   console.error("[MQTT] error", err);
 });
 
@@ -239,7 +708,7 @@ function publishToESP32(label, confidence, forceSend = false) {
   const now = Date.now();
 
   if (!forceSend && now - lastSentTime < COOLDOWN_MS) {
-    document.getElementById("mqttSent").innerText = "cooldown ignored";
+    document.getElementById("mqttSent").innerText = "⏳ cooldown";
     return;
   }
 
@@ -253,8 +722,8 @@ function publishToESP32(label, confidence, forceSend = false) {
   mqttClient.publish(MQTT_TOPIC, JSON.stringify(payload));
   lastSentTime = now;
 
-  document.getElementById("mqttSent").innerText =
-    label + " / " + confidence.toFixed(2);
+  document.getElementById("mqttSent").innerHTML =
+    '<span style="color:' + getLabelColor(label) + '">' + label + '</span> · ' + confidence.toFixed(2);
 
   console.log("[MQTT] sent:", payload);
 }
@@ -262,9 +731,12 @@ function publishToESP32(label, confidence, forceSend = false) {
 function manualSend(label) {
   publishToESP32(label, 0.99, true);
 
-  document.getElementById("bestLabel").innerText = label;
+  const el = document.getElementById("bestLabel");
+  el.innerText = label;
+  el.style.color = getLabelColor(label);
   document.getElementById("confidence").innerText = "0.990";
-  document.getElementById("stableStatus").innerText = "manual command";
+  document.getElementById("confBar").style.width = "99%";
+  document.getElementById("stableStatus").innerText = "✋ manual";
 }
 
 /* ================== EDGE IMPULSE ================== */
@@ -272,16 +744,13 @@ function manualSend(label) {
 async function waitForEdgeImpulseClassifier() {
   return new Promise((resolve, reject) => {
     let elapsed = 0;
-
     const timer = setInterval(() => {
       if (typeof EdgeImpulseClassifier !== "undefined") {
         clearInterval(timer);
         resolve();
         return;
       }
-
       elapsed += 100;
-
       if (elapsed >= 10000) {
         clearInterval(timer);
         reject("EdgeImpulseClassifier not found after 10 seconds");
@@ -295,7 +764,7 @@ async function initClassifier() {
 
   try {
     document.getElementById("eiStatus").innerHTML =
-      "<span class='warn'>Loading...</span>";
+      '<span class="dot dot-warn"></span>Loading...';
 
     await waitForEdgeImpulseClassifier();
 
@@ -303,28 +772,24 @@ async function initClassifier() {
     await classifier.init();
 
     document.getElementById("eiStatus").innerHTML =
-      "<span class='ok'>Loaded</span>";
+      '<span class="dot dot-ok"></span>Loaded';
 
     console.log("[EI] classifier loaded");
 
     if (classifier.getProperties) {
       console.log("[EI] properties:", classifier.getProperties());
     }
-  }
-  catch (err) {
+  } catch (err) {
     console.error("[EI] load failed:", err);
-
     document.getElementById("eiStatus").innerHTML =
-      "<span class='bad'>Load failed</span>";
+      '<span class="dot dot-err"></span>Failed';
 
     alert(
       "Không load được Edge Impulse WebAssembly.\n\n" +
-      "Kiểm tra các file này phải nằm cùng thư mục:\n" +
-      "1. index.html\n" +
-      "2. edge-impulse-standalone.js\n" +
-      "3. edge-impulse-standalone.wasm\n" +
-      "4. run-impulse.js\n\n" +
-      "Lỗi chi tiết: " + err
+      "Kiểm tra các file phải nằm cùng thư mục:\n" +
+      "1. index.html\n2. edge-impulse-standalone.js\n" +
+      "3. edge-impulse-standalone.wasm\n4. run-impulse.js\n\n" +
+      "Lỗi: " + err
     );
   }
 }
@@ -333,51 +798,33 @@ async function initClassifier() {
 
 function calculateRMS(samples) {
   let sum = 0;
-
   for (let i = 0; i < samples.length; i++) {
     sum += samples[i] * samples[i];
   }
-
   return Math.sqrt(sum / samples.length);
 }
 
 function resampleLinear(input, inputSampleRate, outputSampleRate) {
-  if (inputSampleRate === outputSampleRate) {
-    return input;
-  }
-
+  if (inputSampleRate === outputSampleRate) return input;
   const ratio = inputSampleRate / outputSampleRate;
   const newLength = Math.round(input.length / ratio);
   const result = new Float32Array(newLength);
-
   for (let i = 0; i < newLength; i++) {
     const index = i * ratio;
-    const index0 = Math.floor(index);
-    const index1 = Math.min(index0 + 1, input.length - 1);
-    const frac = index - index0;
-
-    result[i] = input[index0] * (1 - frac) + input[index1] * frac;
+    const i0 = Math.floor(index);
+    const i1 = Math.min(i0 + 1, input.length - 1);
+    const frac = index - i0;
+    result[i] = input[i0] * (1 - frac) + input[i1] * frac;
   }
-
   return result;
 }
 
 function prepareAudioForClassifier(floatSamples) {
   const out = [];
-
   for (let i = 0; i < floatSamples.length; i++) {
-    let s = floatSamples[i];
-
-    if (s > 1) s = 1;
-    if (s < -1) s = -1;
-
-    if (USE_INT16_AUDIO) {
-      out.push(Math.round(s * 32767));
-    } else {
-      out.push(s);
-    }
+    let s = Math.max(-1, Math.min(1, floatSamples[i]));
+    out.push(USE_INT16_AUDIO ? Math.round(s * 32767) : s);
   }
-
   return out;
 }
 
@@ -385,37 +832,22 @@ function prepareAudioForClassifier(floatSamples) {
 
 function normalizeResult(result) {
   if (!result) return [];
-
-  if (Array.isArray(result.results)) {
-    return result.results;
-  }
-
-  if (Array.isArray(result.classification)) {
-    return result.classification;
-  }
-
-  if (result.result && Array.isArray(result.result.results)) {
-    return result.result.results;
-  }
-
-  if (result.result && Array.isArray(result.result.classification)) {
-    return result.result.classification;
-  }
-
+  if (Array.isArray(result.results)) return result.results;
+  if (Array.isArray(result.classification)) return result.classification;
+  if (result.result && Array.isArray(result.result.results)) return result.result.results;
+  if (result.result && Array.isArray(result.result.classification)) return result.result.classification;
   if (result.classification && typeof result.classification === "object") {
     return Object.keys(result.classification).map(k => ({
-      label: k,
-      value: result.classification[k]
+      label: k, value: result.classification[k]
     }));
   }
-
   return [];
 }
 
 function handleStablePrediction(label, confidence) {
   if (!VALID_COMMANDS.includes(label)) {
-    document.getElementById("stableStatus").innerText = "ignored: " + label;
-    document.getElementById("mqttSent").innerText = "no send";
+    document.getElementById("stableStatus").innerText = "🚫 " + label;
+    document.getElementById("mqttSent").innerText = "—";
     candidateCount = 0;
     lastCandidateLabel = "none";
     return;
@@ -423,8 +855,8 @@ function handleStablePrediction(label, confidence) {
 
   if (confidence < CONFIDENCE_THRESHOLD) {
     document.getElementById("stableStatus").innerText =
-      "low confidence: " + confidence.toFixed(2);
-    document.getElementById("mqttSent").innerText = "no send";
+      "⚠️ low: " + confidence.toFixed(2);
+    document.getElementById("mqttSent").innerText = "—";
     candidateCount = 0;
     lastCandidateLabel = "none";
     return;
@@ -438,11 +870,10 @@ function handleStablePrediction(label, confidence) {
   }
 
   document.getElementById("stableStatus").innerText =
-    "candidate: " + label + " (" + candidateCount + "/" + REQUIRED_CONSECUTIVE + ")";
+    "🎯 " + label + " (" + candidateCount + "/" + REQUIRED_CONSECUTIVE + ")";
 
   if (candidateCount >= REQUIRED_CONSECUTIVE) {
     publishToESP32(label, confidence, false);
-
     candidateCount = 0;
     lastCandidateLabel = "none";
   }
@@ -450,7 +881,6 @@ function handleStablePrediction(label, confidence) {
 
 async function classifyOneWindow(samples) {
   if (!classifier || isClassifying) return;
-
   isClassifying = true;
 
   try {
@@ -459,8 +889,7 @@ async function classifyOneWindow(samples) {
 
     if (!items || items.length === 0) {
       console.log("[EI] unknown result format:", result);
-      document.getElementById("scores").innerText =
-        "Unknown result format. Open browser console to inspect.";
+      document.getElementById("scores").innerText = "Unknown result format.";
       return;
     }
 
@@ -471,8 +900,8 @@ async function classifyOneWindow(samples) {
     for (const item of items) {
       const label = item.label;
       const value = Number(item.value);
-
-      scoreHtml += "<div><b>" + label + "</b>: " + value.toFixed(3) + "</div>";
+      const pct = (value * 100).toFixed(1);
+      const isBest = false; // will be set after finding best
 
       if (value > bestConfidence) {
         bestConfidence = value;
@@ -480,20 +909,38 @@ async function classifyOneWindow(samples) {
       }
     }
 
-    document.getElementById("bestLabel").innerText = bestLabel;
-    document.getElementById("confidence").innerText = bestConfidence.toFixed(3);
+    // Build score bars
+    for (const item of items) {
+      const label = item.label;
+      const value = Number(item.value);
+      const pct = (value * 100).toFixed(1);
+      const barClass = label === bestLabel ? "score-bar-fill best" : "score-bar-fill";
+
+      scoreHtml +=
+        '<div class="score-item">' +
+          '<div class="score-label-text">' + label + '</div>' +
+          '<div class="score-bar-bg"><div class="' + barClass + '" style="width:' + pct + '%"></div></div>' +
+          '<div class="score-value">' + pct + '%</div>' +
+        '</div>';
+    }
+
     document.getElementById("scores").innerHTML = scoreHtml;
+
+    const labelEl = document.getElementById("bestLabel");
+    labelEl.innerText = bestLabel;
+    labelEl.style.color = getLabelColor(bestLabel);
+
+    document.getElementById("confidence").innerText = bestConfidence.toFixed(3);
+    document.getElementById("confBar").style.width = (bestConfidence * 100) + "%";
 
     console.log("[EI] best:", bestLabel, bestConfidence);
 
     handleStablePrediction(bestLabel, bestConfidence);
-  }
-  catch (err) {
+  } catch (err) {
     console.error("[EI] classify error:", err);
     document.getElementById("eiStatus").innerHTML =
-      "<span class='bad'>Classify error</span>";
-  }
-  finally {
+      '<span class="dot dot-err"></span>Error';
+  } finally {
     isClassifying = false;
   }
 }
@@ -505,39 +952,27 @@ async function startSystem() {
     running = true;
 
     await initClassifier();
-
-    if (!classifier) {
-      return;
-    }
+    if (!classifier) return;
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Trình duyệt không hỗ trợ microphone API. Hãy dùng Safari/Chrome mới và mở bằng HTTPS.");
+      alert("Trình duyệt không hỗ trợ microphone. Dùng Safari/Chrome + HTTPS.");
       return;
     }
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
-      },
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       video: false
     });
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
     const source = audioContext.createMediaStreamSource(mediaStream);
-
     processor = audioContext.createScriptProcessor(4096, 1, 1);
-
     audioBuffer = [];
 
     processor.onaudioprocess = async function (event) {
       if (!running) return;
 
       const input = event.inputBuffer.getChannelData(0);
-
       for (let i = 0; i < input.length; i++) {
         audioBuffer.push(input[i]);
       }
@@ -548,25 +983,16 @@ async function startSystem() {
 
       if (audioBuffer.length >= neededInputSamples) {
         const raw = audioBuffer.slice(0, neededInputSamples);
-
-        /*
-          Dùng overlap 50% để tăng khả năng bắt trúng lúc bạn nói.
-          Nếu không overlap, model dễ bị lệch cửa sổ 1 giây.
-        */
         const step = Math.floor(neededInputSamples / 2);
         audioBuffer = audioBuffer.slice(step);
 
         const floatArray = new Float32Array(raw);
-
         const rms = calculateRMS(floatArray);
+
         document.getElementById("rmsValue").innerText = rms.toFixed(4);
+        updateVisualizer(rms);
 
-        const resampled = resampleLinear(
-          floatArray,
-          audioContext.sampleRate,
-          TARGET_SAMPLE_RATE
-        );
-
+        const resampled = resampleLinear(floatArray, audioContext.sampleRate, TARGET_SAMPLE_RATE);
         const modelInput = prepareAudioForClassifier(resampled).slice(0, WINDOW_SAMPLES);
 
         if (modelInput.length === WINDOW_SAMPLES) {
@@ -579,23 +1005,18 @@ async function startSystem() {
     processor.connect(audioContext.destination);
 
     document.getElementById("micStatus").innerHTML =
-      "<span class='ok'>Running</span>";
+      '<span class="dot dot-ok"></span>Running';
 
     console.log("[MIC] started. Browser sample rate:", audioContext.sampleRate);
-  }
-  catch (err) {
+  } catch (err) {
     console.error("[MIC] start error:", err);
-
     document.getElementById("micStatus").innerHTML =
-      "<span class='bad'>Error</span>";
+      '<span class="dot dot-err"></span>Error';
 
     alert(
       "Không bật được microphone.\n\n" +
-      "Hãy kiểm tra:\n" +
-      "1. Link phải là HTTPS.\n" +
-      "2. Trình duyệt đã cho phép Microphone.\n" +
-      "3. Không mở bằng file local.\n" +
-      "4. Thử mở bằng Safari/Chrome, không mở trong Zalo/Facebook."
+      "Kiểm tra:\n1. Link phải là HTTPS\n2. Cho phép Microphone\n" +
+      "3. Dùng Safari/Chrome, không mở trong Zalo/Facebook"
     );
   }
 }
@@ -603,30 +1024,20 @@ async function startSystem() {
 function stopSystem() {
   running = false;
 
-  if (processor) {
-    processor.disconnect();
-    processor = null;
-  }
-
-  if (audioContext) {
-    audioContext.close();
-    audioContext = null;
-  }
-
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(track => track.stop());
-    mediaStream = null;
-  }
+  if (processor) { processor.disconnect(); processor = null; }
+  if (audioContext) { audioContext.close(); audioContext = null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
 
   audioBuffer = [];
-
   candidateCount = 0;
   lastCandidateLabel = "none";
 
   document.getElementById("micStatus").innerHTML =
-    "<span class='bad'>Stopped</span>";
+    '<span class="dot dot-err"></span>Stopped';
+  document.getElementById("stableStatus").innerText = "⏹ stopped";
 
-  document.getElementById("stableStatus").innerText = "stopped";
+  // Reset visualizer
+  vizBars.forEach(b => { b.style.height = "4px"; b.style.opacity = "0.3"; });
 
   console.log("[MIC] stopped");
 }
